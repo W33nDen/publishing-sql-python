@@ -265,13 +265,4 @@ ALTER TABLE Employees MODIFY COLUMN Phone VARCHAR(30);
 
 -- Перейменувати колонку (MySQL 8+)
 ALTER TABLE Orders RENAME COLUMN TotalAmount TO OrderTotal;
-
--- ============================================================
--- ЧАСТИНА 6: DDL - TRUNCATE та DROP (приклади)
--- ============================================================
-
--- Очистити таблицю (без видалення структури)
--- TRUNCATE TABLE OrderItem; -- закоментовано, щоб не видаляти дані
-
--- Видалити таблицю повністю (приклад)
 -- DROP TABLE IF EXISTS temp_table; -- закоментовано для безпеки
