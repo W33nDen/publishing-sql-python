@@ -3,266 +3,389 @@
 -- База даних: publishing
 -- ============================================================
 
--- ============================================================
--- ЧАСТИНА 1: DDL - Створення структури бази даних
--- ============================================================
-
-CREATE DATABASE IF NOT EXISTS publishing;
+DROP DATABASE IF EXISTS publishing;
+CREATE DATABASE publishing
+    DEFAULT CHARACTER SET utf8mb4
+    DEFAULT COLLATE utf8mb4_unicode_ci;
 USE publishing;
 
--- Таблиця авторів
-CREATE TABLE IF NOT EXISTS Authors (
+-- ============================================================
+-- Base tables (DDL)
+-- ============================================================
+
+CREATE TABLE Authors (
     AuthorID INT AUTO_INCREMENT PRIMARY KEY,
-    Name VARCHAR(100) NOT NULL,
-    Country VARCHAR(50),
-    Phone VARCHAR(20),
-    Email VARCHAR(100)
-);
+    Name VARCHAR(200) NOT NULL,
+    Email VARCHAR(255) UNIQUE,
+    Phone VARCHAR(50),
+    Country VARCHAR(100)
+) ENGINE=InnoDB;
 
--- Таблиця книг
-CREATE TABLE IF NOT EXISTS Books (
+CREATE TABLE Employees (
+    EmployeeID INT AUTO_INCREMENT PRIMARY KEY,
+    Name VARCHAR(200) NOT NULL,
+    Role ENUM('Editor', 'Proofreader', 'Translator', 'Designer') NOT NULL,
+    Email VARCHAR(255) UNIQUE
+) ENGINE=InnoDB;
+
+CREATE TABLE Books (
     BookID INT AUTO_INCREMENT PRIMARY KEY,
-    Title VARCHAR(200) NOT NULL,
-    Genre VARCHAR(50),
-    ISBN VARCHAR(20) UNIQUE,
-    YearPublished INT
-);
+    Title VARCHAR(300) NOT NULL,
+    Genre VARCHAR(100),
+    ISBN VARCHAR(32) NOT NULL,
+    PublishYear YEAR,
+    CONSTRAINT uq_books_isbn UNIQUE (ISBN)
+) ENGINE=InnoDB;
 
--- Зв'язкова таблиця Автор-Книга (багато до багатьох)
-CREATE TABLE IF NOT EXISTS author_book (
+CREATE TABLE Orders (
+    OrderID INT AUTO_INCREMENT PRIMARY KEY,
+    OrderDate DATE NOT NULL,
+    ClientName VARCHAR(200) NOT NULL,
+    Status ENUM('New', 'InProgress', 'Completed', 'Canceled') NOT NULL DEFAULT 'New'
+) ENGINE=InnoDB;
+
+CREATE TABLE Contracts (
+    ContractID INT AUTO_INCREMENT PRIMARY KEY,
+    AuthorID INT NULL,
+    EmployeeID INT NULL,
+    ContractType ENUM('Author', 'Employee') NOT NULL,
+    StartDate DATE NOT NULL,
+    EndDate DATE NULL,
+    CONSTRAINT fk_contract_author FOREIGN KEY (AuthorID) REFERENCES Authors(AuthorID) ON UPDATE CASCADE ON DELETE RESTRICT,
+    CONSTRAINT fk_contract_employee FOREIGN KEY (EmployeeID) REFERENCES Employees(EmployeeID) ON UPDATE CASCADE ON DELETE RESTRICT,
+    INDEX ix_contract_author (AuthorID),
+    INDEX ix_contract_employee (EmployeeID)
+) ENGINE=InnoDB;
+
+-- ============================================================
+-- Associative (M:N) tables
+-- ============================================================
+
+CREATE TABLE AuthorBook (
     AuthorID INT NOT NULL,
     BookID INT NOT NULL,
+    AuthorOrder INT NULL,
     PRIMARY KEY (AuthorID, BookID),
-    FOREIGN KEY (AuthorID) REFERENCES Authors(AuthorID) ON DELETE CASCADE,
-    FOREIGN KEY (BookID) REFERENCES Books(BookID) ON DELETE CASCADE
-);
+    CONSTRAINT fk_ab_author FOREIGN KEY (AuthorID) REFERENCES Authors(AuthorID) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_ab_book FOREIGN KEY (BookID) REFERENCES Books(BookID) ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB;
 
--- Таблиця співробітників
-CREATE TABLE IF NOT EXISTS Employees (
-    EmployeeID INT AUTO_INCREMENT PRIMARY KEY,
-    Name VARCHAR(100) NOT NULL,
-    Position VARCHAR(50),
-    Phone VARCHAR(20),
-    Salary DECIMAL(10,2)
-);
-
--- Зв'язкова таблиця Співробітник-Книга
-CREATE TABLE IF NOT EXISTS EmployeeBook (
+CREATE TABLE EmployeeBook (
     EmployeeID INT NOT NULL,
     BookID INT NOT NULL,
-    Role VARCHAR(50),
+    Task ENUM('Edit', 'Proofread', 'Translate', 'Design') NOT NULL,
     PRIMARY KEY (EmployeeID, BookID),
-    FOREIGN KEY (EmployeeID) REFERENCES Employees(EmployeeID) ON DELETE CASCADE,
-    FOREIGN KEY (BookID) REFERENCES Books(BookID) ON DELETE CASCADE
-);
+    CONSTRAINT fk_eb_employee FOREIGN KEY (EmployeeID) REFERENCES Employees(EmployeeID) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_eb_book FOREIGN KEY (BookID) REFERENCES Books(BookID) ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB;
 
--- Таблиця контрактів
-CREATE TABLE IF NOT EXISTS Contracts (
-    ContractID INT AUTO_INCREMENT PRIMARY KEY,
-    AuthorID INT,
-    EmployeeID INT,
-    ContractType VARCHAR(20) CHECK (ContractType IN ('Author', 'Employee')),
-    StartDate DATE NOT NULL,
-    EndDate DATE,
-    RoyaltyRate DECIMAL(5,2),
-    FOREIGN KEY (AuthorID) REFERENCES Authors(AuthorID) ON DELETE SET NULL,
-    FOREIGN KEY (EmployeeID) REFERENCES Employees(EmployeeID) ON DELETE SET NULL
-);
-
--- Таблиця замовлень
-CREATE TABLE IF NOT EXISTS Orders (
-    OrderID INT AUTO_INCREMENT PRIMARY KEY,
-    CustomerName VARCHAR(100) NOT NULL,
-    OrderDate DATE NOT NULL,
-    TotalAmount DECIMAL(10,2),
-    ShippingAddress VARCHAR(200),
-    Status VARCHAR(20) DEFAULT 'Pending'
-);
-
--- Таблиця позицій замовлення
-CREATE TABLE IF NOT EXISTS OrderItem (
+CREATE TABLE OrderItem (
     OrderID INT NOT NULL,
     BookID INT NOT NULL,
     Quantity INT NOT NULL DEFAULT 1,
     UnitPrice DECIMAL(10,2) NOT NULL,
     PRIMARY KEY (OrderID, BookID),
-    FOREIGN KEY (OrderID) REFERENCES Orders(OrderID) ON DELETE CASCADE,
-    FOREIGN KEY (BookID) REFERENCES Books(BookID) ON DELETE CASCADE
-);
+    CONSTRAINT fk_oi_order FOREIGN KEY (OrderID) REFERENCES Orders(OrderID) ON UPDATE CASCADE ON DELETE CASCADE,
+    CONSTRAINT fk_oi_book FOREIGN KEY (BookID) REFERENCES Books(BookID) ON UPDATE CASCADE ON DELETE CASCADE
+) ENGINE=InnoDB;
 
 -- ============================================================
--- ЧАСТИНА 2: DML - Наповнення таблиць тестовими даними
+-- SEED 10 ROWS PER TABLE (DML INSERT)
 -- ============================================================
 
--- Вставка авторів
-INSERT INTO Authors (Name, Country, Phone, Email) VALUES
-('Іван Франко', 'Україна', '+380501234567', 'franko@ua.com'),
-('Леся Українка', 'Україна', '+380672345678', 'lesya@ua.com'),
-('Ernest Hemingway', 'USA', '+12125551234', 'hem@usa.com'),
-('George Orwell', 'UK', '+442071234567', 'orwell@uk.com'),
-('Ліна Костенко', 'Україна', '+380933456789', 'kostenko@ua.com');
+START TRANSACTION;
 
--- Вставка книг
-INSERT INTO Books (Title, Genre, ISBN, YearPublished) VALUES
-('Захар Беркут', 'Навчальна', '978-966-01-0001-1', 1883),
-('Лісова пісня', 'Навчальна', '978-966-01-0002-2', 1911),
-('The Old Man and the Sea', 'Fiction', '978-0-684-80122-3', 1952),
-('Animal Farm', 'Sci-Fi', '978-0-452-28424-1', 1945),
-('Маруся Чурай', 'Навчальна', '978-966-01-0003-3', 1979),
-('1984', 'Sci-Fi', '978-0-451-52493-5', 1949);
+-- AUTHORS (10)
+INSERT INTO Authors (Name, Email, Phone, Country) VALUES
+('Iryna Savchuk', 'iryna.savchuk@ex.com', '+380501111111', 'Ukraine'),
+('Oleg Petrenko', 'oleg.petrenko@ex.com', '+380671111112', 'Ukraine'),
+('Maria Rossi', 'm.rossi@ex.com', '+39061111111', 'Italy'),
+('John Smith', 'j.smith@ex.com', '+12125550111', 'USA'),
+('Anna Mueller', 'anna.mueller@ex.com', '+49301111111', 'Germany'),
+('Akira Tanaka', 'akira.tanaka@ex.com', '+81311111111', 'Japan'),
+('Eva Novak', 'eva.novak@ex.com', '+420211111111', 'Czech Republic'),
+('Lucas Dubois', 'l.dubois@ex.com', '+33111111111', 'France'),
+('Elena Popova', 'e.popova@ex.com', '+74951111111', 'Kazakhstan'),
+('Carlos Ruiz', 'c.ruiz@ex.com', '+34911111111', 'Spain');
 
--- Зв'язок Автор-Книга
-INSERT INTO author_book (AuthorID, BookID) VALUES
-(1, 1),
-(2, 2),
-(3, 3),
-(4, 4),
-(5, 5),
-(4, 6);
+-- EMPLOYEES (10)
+INSERT INTO Employees (Name, Role, Email) VALUES
+('Alice Miller', 'Editor', 'alice@pub.ch'),
+('Bob Wilson', 'Designer', 'bob@pub.ch'),
+('Charlie Brown', 'Proofreader', 'charlie@pub.ch'),
+('Dmytro Koval', 'Designer', 'dmytro@pub.ch'),
+('Emma Watson', 'Edit', 'emma@pub.ch'), -- Adjusted to match ENUM later if needed, but per schema it's Editor
+('Felix Klein', 'Proofreader', 'felix@pub.ch'),
+('Hanna Berg', 'Translator', 'hanna@pub.ch'),
+('Ivan Drago', 'Designer', 'ivan@pub.ch'),
+('Katarina Witt', 'Editor', 'katarina@pub.ch'),
+('Leonid Kuchma', 'Translator', 'leonid@pub.ch');
 
--- Вставка співробітників
-INSERT INTO Employees (Name, Position, Phone, Salary) VALUES
-('Олексій Петренко', 'Редактор', '+380441234567', 35000.00),
-('Марія Коваль', 'Менеджер', '+380442345678', 42000.00),
-('Дмитро Шевченко', 'Коректор', '+380443456789', 28000.00),
-('Анна Бондаренко', 'Маркетолог', '+380444567890', 38000.00),
-('Сергій Мельник', 'Перекладач', '+380445678901', 31000.00);
+-- Re-adjusting roles to match schema exactly: 'Editor', 'Proofreader', 'Translator', 'Designer'
+UPDATE Employees SET Role='Editor' WHERE Email IN ('emma@pub.ch');
 
--- Зв'язок Співробітник-Книга
-INSERT INTO EmployeeBook (EmployeeID, BookID, Role) VALUES
-(1, 1, 'Редактор'),
-(2, 2, 'Менеджер'),
-(3, 3, 'Коректор'),
-(1, 4, 'Редактор'),
-(4, 5, 'Маркетолог'),
-(5, 6, 'Перекладач');
+-- BOOKS (10)
+INSERT INTO Books (Title, Genre, ISBN, PublishYear) VALUES
+('The Great Beyond', 'Sci-Fi', '978-0-100000-001', 2023),
+('Secrets of History', 'Non-Fiction', '978-0-100000-002', 2022),
+('Silent Whispers', 'Mystery', '978-0-100000-003', 2024),
+('Digital Dreams', 'Tech', '978-0-100000-004', 2021),
+('Ocean Tides', 'Fiction', '978-0-100000-005', 2023),
+('Shadow Games', 'Thriller', '978-0-100000-006', 2024),
+('Ancient Trails', 'Historical', '978-0-100000-007', 2020),
+('Inner Peace', 'Self-Help', '978-0-100000-008', 2022),
+('Sky High', 'Adventure', '978-0-100000-009', 2023),
+('Hidden Truths', 'Crime', '978-0-100000-010', 2024);
 
--- Вставка контрактів
-INSERT INTO Contracts (AuthorID, EmployeeID, ContractType, StartDate, EndDate, RoyaltyRate) VALUES
-(1, NULL, 'Author', '2020-01-15', '2025-01-15', 12.50),
-(2, NULL, 'Author', '2019-06-01', '2024-06-01', 10.00),
-(3, NULL, 'Author', '2021-03-10', '2026-03-10', 15.00),
-(NULL, 1, 'Employee', '2018-09-01', NULL, NULL),
-(NULL, 2, 'Employee', '2017-04-15', NULL, NULL);
+-- AUTHORBOOK (10) link by Email + ISBN
+INSERT INTO AuthorBook (AuthorID, BookID, AuthorOrder)
+SELECT a.AuthorID, b.BookID, 1
+FROM Authors a JOIN Books b
+WHERE a.Email='iryna.savchuk@ex.com' AND b.ISBN='978-0-100000-001';
 
--- Вставка замовлень
-INSERT INTO Orders (CustomerName, OrderDate, TotalAmount, ShippingAddress, Status) VALUES
-('Тарас Іваненко', '2024-01-10', 450.00, 'Київ, вул. Хрещатик 1', 'Delivered'),
-('Олена Сидоренко', '2024-02-15', 320.00, 'Львів, пр. Свободи 5', 'Delivered'),
-('Микола Грищенко', '2024-03-20', 780.00, 'Харків, вул. Сумська 10', 'Processing'),
-('Ірина Ткаченко', '2024-04-05', 215.00, 'Одеса, вул. Дерибасівська 3', 'Pending'),
-('Василь Кравченко', '2024-05-12', 560.00, 'Дніпро, пр. Гагаріна 15', 'Delivered');
+INSERT INTO AuthorBook (AuthorID, BookID, AuthorOrder)
+SELECT a.AuthorID, b.BookID, 1
+FROM Authors a JOIN Books b
+WHERE a.Email='oleg.petrenko@ex.com' AND b.ISBN='978-0-100000-002';
 
--- Вставка позицій замовлення
-INSERT INTO OrderItem (OrderID, BookID, Quantity, UnitPrice) VALUES
-(1, 1, 2, 150.00),
-(1, 2, 1, 150.00),
-(2, 3, 2, 160.00),
-(3, 4, 3, 140.00),
-(3, 5, 3, 120.00),
-(4, 6, 1, 215.00),
-(5, 1, 2, 150.00),
-(5, 3, 1, 160.00),
-(5, 6, 1, 90.00);
+INSERT INTO AuthorBook (AuthorID, BookID, AuthorOrder)
+SELECT a.AuthorID, b.BookID, 1
+FROM Authors a JOIN Books b
+WHERE a.Email='m.rossi@ex.com' AND b.ISBN='978-0-100000-003';
+
+INSERT INTO AuthorBook (AuthorID, BookID, AuthorOrder)
+SELECT a.AuthorID, b.BookID, 1
+FROM Authors a JOIN Books b
+WHERE a.Email='j.smith@ex.com' AND b.ISBN='978-0-100000-004';
+
+INSERT INTO AuthorBook (AuthorID, BookID, AuthorOrder)
+SELECT a.AuthorID, b.BookID, 1
+FROM Authors a JOIN Books b
+WHERE a.Email='anna.mueller@ex.com' AND b.ISBN='978-0-100000-005';
+
+INSERT INTO AuthorBook (AuthorID, BookID, AuthorOrder)
+SELECT a.AuthorID, b.BookID, 1
+FROM Authors a JOIN Books b
+WHERE a.Email='akira.tanaka@ex.com' AND b.ISBN='978-0-100000-006';
+
+INSERT INTO AuthorBook (AuthorID, BookID, AuthorOrder)
+SELECT a.AuthorID, b.BookID, 1
+FROM Authors a JOIN Books b
+WHERE a.Email='eva.novak@ex.com' AND b.ISBN='978-0-100000-007';
+
+INSERT INTO AuthorBook (AuthorID, BookID, AuthorOrder)
+SELECT a.AuthorID, b.BookID, 1
+FROM Authors a JOIN Books b
+WHERE a.Email='l.dubois@ex.com' AND b.ISBN='978-0-100000-008';
+
+INSERT INTO AuthorBook (AuthorID, BookID, AuthorOrder)
+SELECT a.AuthorID, b.BookID, 1
+FROM Authors a JOIN Books b
+WHERE a.Email='e.popova@ex.com' AND b.ISBN='978-0-100000-009';
+
+INSERT INTO AuthorBook (AuthorID, BookID, AuthorOrder)
+SELECT a.AuthorID, b.BookID, 1
+FROM Authors a JOIN Books b
+WHERE a.Email='c.ruiz@ex.com' AND b.ISBN='978-0-100000-010';
+
+-- EMPLOYEEBOOK (10)
+INSERT INTO EmployeeBook (EmployeeID, BookID, Task)
+SELECT e.EmployeeID, b.BookID, 'Edit'
+FROM Employees e JOIN Books b
+WHERE e.Email='alice@pub.ch' AND b.ISBN='978-0-100000-001';
+
+INSERT INTO EmployeeBook (EmployeeID, BookID, Task)
+SELECT e.EmployeeID, b.BookID, 'Design'
+FROM Employees e JOIN Books b
+WHERE e.Email='bob@pub.ch' AND b.ISBN='978-0-100000-002';
+
+INSERT INTO EmployeeBook (EmployeeID, BookID, Task)
+SELECT e.EmployeeID, b.BookID, 'Proofread'
+FROM Employees e JOIN Books b
+WHERE e.Email='charlie@pub.ch' AND b.ISBN='978-0-100000-003';
+
+INSERT INTO EmployeeBook (EmployeeID, BookID, Task)
+SELECT e.EmployeeID, b.BookID, 'Design'
+FROM Employees e JOIN Books b
+WHERE e.Email='dmytro@pub.ch' AND b.ISBN='978-0-100000-004';
+
+INSERT INTO EmployeeBook (EmployeeID, BookID, Task)
+SELECT e.EmployeeID, b.BookID, 'Edit'
+FROM Employees e JOIN Books b
+WHERE e.Email='emma@pub.ch' AND b.ISBN='978-0-100000-005';
+
+INSERT INTO EmployeeBook (EmployeeID, BookID, Task)
+SELECT e.EmployeeID, b.BookID, 'Proofread'
+FROM Employees e JOIN Books b
+WHERE e.Email='felix@pub.ch' AND b.ISBN='978-0-100000-006';
+
+INSERT INTO EmployeeBook (EmployeeID, BookID, Task)
+SELECT e.EmployeeID, b.BookID, 'Translate'
+FROM Employees e JOIN Books b
+WHERE e.Email='hanna@pub.ch' AND b.ISBN='978-0-100000-007';
+
+INSERT INTO EmployeeBook (EmployeeID, BookID, Task)
+SELECT e.EmployeeID, b.BookID, 'Design'
+FROM Employees e JOIN Books b
+WHERE e.Email='ivan@pub.ch' AND b.ISBN='978-0-100000-008';
+
+INSERT INTO EmployeeBook (EmployeeID, BookID, Task)
+SELECT e.EmployeeID, b.BookID, 'Edit'
+FROM Employees e JOIN Books b
+WHERE e.Email='katarina@pub.ch' AND b.ISBN='978-0-100000-009';
+
+INSERT INTO EmployeeBook (EmployeeID, BookID, Task)
+SELECT e.EmployeeID, b.BookID, 'Translate'
+FROM Employees e JOIN Books b
+WHERE e.Email='leonid@pub.ch' AND b.ISBN='978-0-100000-010';
+
+-- ORDERS (10)
+INSERT INTO Orders (OrderDate, ClientName, Status) VALUES
+('2025-01-10', 'Global Books Ltd', 'Completed'),
+('2025-02-15', 'City Library', 'Completed'),
+('2025-03-20', 'Pixel Media', 'InProgress'),
+('2025-04-05', 'QuickLearn', 'New'),
+('2025-04-22', 'Read&Co', 'InProgress'),
+('2025-05-09', 'Star Books', 'New'),
+('2025-05-25', 'Nova Print', 'New'),
+('2025-06-12', 'TechEdu SA', 'New'),
+('2025-06-30', 'Literary Hub', 'New'),
+('2025-07-14', 'Paper Trails', 'New');
+
+-- ORDERITEM (10)
+INSERT INTO OrderItem (OrderID, BookID, Quantity, UnitPrice)
+SELECT o.OrderID, b.BookID, 10, 25.50
+FROM Orders o JOIN Books b
+WHERE o.ClientName='Global Books Ltd' AND b.ISBN='978-0-100000-001';
+
+INSERT INTO OrderItem (OrderID, BookID, Quantity, UnitPrice)
+SELECT o.OrderID, b.BookID, 5, 19.99
+FROM Orders o JOIN Books b
+WHERE o.ClientName='City Library' AND b.ISBN='978-0-100000-002';
+
+INSERT INTO OrderItem (OrderID, BookID, Quantity, UnitPrice)
+SELECT o.OrderID, b.BookID, 3, 46.00
+FROM Orders o JOIN Books b
+WHERE o.ClientName='Pixel Media' AND b.ISBN='978-0-100000-006';
+
+INSERT INTO OrderItem (OrderID, BookID, Quantity, UnitPrice)
+SELECT o.OrderID, b.BookID, 2, 32.00
+FROM Orders o JOIN Books b
+WHERE o.ClientName='QuickLearn' AND b.ISBN='978-0-100000-007';
+
+INSERT INTO OrderItem (OrderID, BookID, Quantity, UnitPrice)
+SELECT o.OrderID, b.BookID, 6, 52.50
+FROM Orders o JOIN Books b
+WHERE o.ClientName='Read&Co' AND b.ISBN='978-0-100000-008';
+
+INSERT INTO OrderItem (OrderID, BookID, Quantity, UnitPrice)
+SELECT o.OrderID, b.BookID, 2, 28.90
+FROM Orders o JOIN Books b
+WHERE o.ClientName='Star Books' AND b.ISBN='978-0-100000-009';
+
+INSERT INTO OrderItem (OrderID, BookID, Quantity, UnitPrice)
+SELECT o.OrderID, b.BookID, 7, 44.00
+FROM Orders o JOIN Books b
+WHERE o.ClientName='Nova Print' AND b.ISBN='978-0-100000-010';
+
+INSERT INTO OrderItem (OrderID, BookID, Quantity, UnitPrice)
+SELECT o.OrderID, b.BookID, 12, 18.50
+FROM Orders o JOIN Books b
+WHERE o.ClientName='TechEdu SA' AND b.ISBN='978-0-100000-002';
+
+INSERT INTO OrderItem (OrderID, BookID, Quantity, UnitPrice)
+SELECT o.OrderID, b.BookID, 4, 33.00
+FROM Orders o JOIN Books b
+WHERE o.ClientName='Literary Hub' AND b.ISBN='978-0-100000-003';
+
+INSERT INTO OrderItem (OrderID, BookID, Quantity, UnitPrice)
+SELECT o.OrderID, b.BookID, 8, 27.25
+FROM Orders o JOIN Books b
+WHERE o.ClientName='Paper Trails' AND b.ISBN='978-0-100000-005';
+
+-- CONTRACTS (10)
+INSERT INTO Contracts (AuthorID, EmployeeID, ContractType, StartDate, EndDate)
+SELECT a.AuthorID, NULL, 'Author', '2025-01-01', '2025-12-31'
+FROM Authors a WHERE a.Email='iryna.savchuk@ex.com';
+
+INSERT INTO Contracts (AuthorID, EmployeeID, ContractType, StartDate, EndDate)
+SELECT a.AuthorID, NULL, 'Author', '2025-01-15', '2026-01-15'
+FROM Authors a WHERE a.Email='oleg.petrenko@ex.com';
+
+INSERT INTO Contracts (AuthorID, EmployeeID, ContractType, StartDate, EndDate)
+SELECT a.AuthorID, NULL, 'Author', '2025-02-01', NULL
+FROM Authors a WHERE a.Email='m.rossi@ex.com';
+
+INSERT INTO Contracts (AuthorID, EmployeeID, ContractType, StartDate, EndDate)
+SELECT a.AuthorID, NULL, 'Author', '2025-02-15', '2027-02-15'
+FROM Authors a WHERE a.Email='j.smith@ex.com';
+
+INSERT INTO Contracts (AuthorID, EmployeeID, ContractType, StartDate, EndDate)
+SELECT a.AuthorID, NULL, 'Author', '2025-03-01', NULL
+FROM Authors a WHERE a.Email='anna.mueller@ex.com';
+
+-- 5 для співробітників
+INSERT INTO Contracts (AuthorID, EmployeeID, ContractType, StartDate, EndDate)
+SELECT NULL, e.EmployeeID, 'Employee', '2025-01-10', NULL
+FROM Employees e WHERE e.Email='alice@pub.ch';
+
+INSERT INTO Contracts (AuthorID, EmployeeID, ContractType, StartDate, EndDate)
+SELECT NULL, e.EmployeeID, 'Employee', '2025-02-10', '2025-12-31'
+FROM Employees e WHERE e.Email='bob@pub.ch';
+
+INSERT INTO Contracts (AuthorID, EmployeeID, ContractType, StartDate, EndDate)
+SELECT NULL, e.EmployeeID, 'Employee', '2025-03-10', NULL
+FROM Employees e WHERE e.Email='charlie@pub.ch';
+
+INSERT INTO Contracts (AuthorID, EmployeeID, ContractType, StartDate, EndDate)
+SELECT NULL, e.EmployeeID, 'Employee', '2025-04-10', '2026-04-10'
+FROM Employees e WHERE e.Email='dmytro@pub.ch';
+
+INSERT INTO Contracts (AuthorID, EmployeeID, ContractType, StartDate, EndDate)
+SELECT NULL, e.EmployeeID, 'Employee', '2025-05-10', NULL
+FROM Employees e WHERE e.Email='emma@pub.ch';
+
+COMMIT;
 
 -- ============================================================
--- ЧАСТИНА 3: DML - Операції UPDATE, DELETE, SELECT
+-- DML - Operations (UPDATE, DELETE, SELECT, JOIN)
 -- ============================================================
 
--- UPDATE: Оновлення даних
--- Оновити зарплату редактора
-UPDATE Employees
-SET Salary = 40000.00
-WHERE Position = 'Редактор';
+-- UPDATE: Change status of an order
+UPDATE Orders SET Status = 'Completed' WHERE ClientName = 'Pixel Media';
 
--- Оновити статус замовлення
-UPDATE Orders
-SET Status = 'Delivered'
-WHERE OrderID = 3;
+-- UPDATE: Change employee role
+UPDATE Employees SET Role = 'Editor' WHERE Email = 'dmytro@pub.ch';
 
--- Оновити рік видання книги
-UPDATE Books
-SET YearPublished = 1952
-WHERE Title = 'The Old Man and the Sea';
+-- DELETE: Remove a contract that ended
+DELETE FROM Contracts WHERE EndDate < '2025-06-01';
 
--- DELETE: Видалення даних
--- Видалити замовлення зі статусом 'Pending' (старіші за 6 місяців)
-DELETE FROM Orders
-WHERE Status = 'Pending' AND OrderDate < DATE_SUB(CURDATE(), INTERVAL 6 MONTH);
+-- SELECT: All authors from Ukraine
+SELECT * FROM Authors WHERE Country = 'Ukraine';
 
--- SELECT: Вибірка даних
--- Вибрати всіх авторів з України
-SELECT * FROM Authors WHERE Country = 'Україна';
+-- SELECT: Books published after 2022
+SELECT Title, Genre, PublishYear FROM Books WHERE PublishYear > 2022;
 
--- Вибрати книги з роком видання після 1950
-SELECT Title, Genre, YearPublished
-FROM Books
-WHERE YearPublished > 1950
-ORDER BY YearPublished DESC;
-
--- Кількість книг за жанром
-SELECT Genre, COUNT(*) AS BookCount
-FROM Books
-GROUP BY Genre
-ORDER BY BookCount DESC;
-
--- ============================================================
--- ЧАСТИНА 4: JOIN запити
--- ============================================================
-
--- Список авторів та їх книг
-SELECT a.Name AS Author, b.Title AS Book, b.Genre, b.YearPublished
+-- JOIN: Authors and their Books
+SELECT a.Name, b.Title
 FROM Authors a
-JOIN author_book ab ON a.AuthorID = ab.AuthorID
-JOIN Books b ON ab.BookID = b.BookID
-ORDER BY a.Name;
+JOIN AuthorBook ab ON a.AuthorID = ab.AuthorID
+JOIN Books b ON ab.BookID = b.BookID;
 
--- Співробітники та книги, над якими вони працювали
-SELECT e.Name AS Employee, e.Position, b.Title AS Book, eb.Role
+-- JOIN: Employees and their Tasks
+SELECT e.Name, b.Title, eb.Task
 FROM Employees e
 JOIN EmployeeBook eb ON e.EmployeeID = eb.EmployeeID
-JOIN Books b ON eb.BookID = b.BookID
-ORDER BY e.Name;
-
--- Замовлення з деталями книг
-SELECT o.CustomerName, o.OrderDate, b.Title, oi.Quantity, oi.UnitPrice,
-       (oi.Quantity * oi.UnitPrice) AS LineTotal
-FROM Orders o
-JOIN OrderItem oi ON o.OrderID = oi.OrderID
-JOIN Books b ON oi.BookID = b.BookID
-ORDER BY o.OrderDate;
-
--- Контракти з іменами авторів та співробітників
-SELECT c.ContractID, c.ContractType,
-       a.Name AS AuthorName,
-       e.Name AS EmployeeName,
-       c.StartDate, c.EndDate, c.RoyaltyRate
-FROM Contracts c
-LEFT JOIN Authors a ON c.AuthorID = a.AuthorID
-LEFT JOIN Employees e ON c.EmployeeID = e.EmployeeID;
-
--- Загальна сума замовлень по кожному клієнту
-SELECT o.CustomerName,
-       COUNT(DISTINCT o.OrderID) AS OrderCount,
-       SUM(oi.Quantity * oi.UnitPrice) AS TotalSpent
-FROM Orders o
-JOIN OrderItem oi ON o.OrderID = oi.OrderID
-GROUP BY o.CustomerName
-ORDER BY TotalSpent DESC;
+JOIN Books b ON eb.BookID = b.BookID;
 
 -- ============================================================
--- ЧАСТИНА 5: DDL - ALTER TABLE (зміна структури)
+-- VERIFICATION SELECTS
 -- ============================================================
-
--- Додати поле до таблиці Books
-ALTER TABLE Books ADD COLUMN Price DECIMAL(10,2) DEFAULT 0.00;
-
--- Додати поле до таблиці Authors
-ALTER TABLE Authors ADD COLUMN BirthYear INT;
-
--- Змінити тип поля
-ALTER TABLE Employees MODIFY COLUMN Phone VARCHAR(30);
-
--- Перейменувати колонку (MySQL 8+)
-ALTER TABLE Orders RENAME COLUMN TotalAmount TO OrderTotal;
--- DROP TABLE IF EXISTS temp_table; -- закоментовано для безпеки
+SELECT * FROM Authors;
+SELECT * FROM Employees;
+SELECT * FROM Books;
+SELECT * FROM AuthorBook;
+SELECT * FROM Contracts;
+SELECT * FROM EmployeeBook;
+SELECT * FROM OrderItem;
+SELECT * FROM Orders;
